@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Livingston Street Interactive Story Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+<style>
+:root { --bg:#f4f6f7; --panel:#ffffff; --text:#1f2d3a; --muted:#5a6b75; --line:#d8e0e3; }
+html,body { height:100%; margin:0; font-family:Arial,Helvetica,sans-serif; color:var(--text); background:var(--bg); }
+.app { display:grid; grid-template-columns:58% 42%; height:100vh; }
+.left { position:relative; }
+#map { height:100%; width:100%; }
+.maplegend {
+  position:absolute; left:12px; bottom:12px; z-index:900; background:rgba(255,255,255,.96);
+  border:1px solid #cfd8dc; border-radius:10px; padding:10px 12px; box-shadow:0 2px 10px rgba(0,0,0,.08);
+  font-size:12px; max-width:380px;
+}
+.maplegend .row { display:flex; align-items:flex-start; margin:4px 0; gap:8px; }
+.maplegend .subtext { color:#5a6b75; margin:0 0 6px 0; line-height:1.3; }
+.dot { width:10px; height:10px; border-radius:50%; border:1px solid #111; display:inline-block; flex:0 0 auto; margin-top:2px; }
+.sq { width:10px; height:10px; border:1px solid #111; display:inline-block; flex:0 0 auto; margin-top:2px; }
+.seg-line-swatch {
+  width:18px; height:0; border-top:4px solid #2c7fb8; border-radius:999px; display:inline-block; flex:0 0 auto; margin-top:7px;
+  opacity:.8;
+}
+.seg-line-swatch.outgoing { border-top-color:#7a0177; }
+.size-legend { margin-top:8px; border-top:1px solid #e1e6e8; padding-top:8px; }
+.scale-item { display:flex; align-items:flex-start; gap:8px; margin:4px 0; }
+.right { display:grid; grid-template-rows:auto auto auto 1fr; gap:10px; padding:12px; overflow:auto; }
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:0 1px 6px rgba(0,0,0,.04); }
+.controls { padding:12px; display:grid; grid-template-columns:minmax(0,1.7fr) minmax(0,1fr) minmax(0,1fr); gap:10px; }
+.control label { display:block; font-size:11px; font-weight:700; color:#5a6b75; margin-bottom:4px; text-transform:uppercase; letter-spacing:.03em; }
+.control select { width:100%; padding:9px 10px; border-radius:8px; border:1px solid #cfd8dc; background:#fff; font-size:13px; }
+.control.toggle-control { grid-column:1 / -1; }
+.toggle-wrap { display:flex; align-items:flex-start; gap:8px; font-size:13px; color:var(--text); }
+.toggle-wrap input { margin-top:2px; }
+.toggle-help { font-size:12px; color:var(--muted); margin-top:4px; }
+.kpis { padding:12px; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+.kpi { border:1px solid var(--line); border-radius:10px; padding:10px; background:#fbfcfc; min-height:88px; }
+.kpi .label { font-size:11px; color:#5a6b75; text-transform:uppercase; letter-spacing:.03em; }
+.kpi .value { font-size:24px; font-weight:700; margin-top:4px; }
+.kpi .delta { font-size:12px; margin-top:4px; color:#5a6b75; line-height:1.25; }
+.chartgrid { display:grid; grid-template-columns:1fr 1fr; gap:10px; min-height:420px; }
+.chartpanel { padding:8px; }
+.notes { padding:12px; }
+.notes h3 { margin:0 0 8px 0; font-size:15px; }
+.notes ul { margin:0; padding-left:18px; }
+.notes li { margin:6px 0; line-height:1.35; }
+.leaflet-div-icon {
+  background:rgba(255,255,255,.95); border:1px solid #b0bec5; border-radius:5px; padding:2px 5px;
+  color:#24343c; box-shadow:none; font-size:11px; font-weight:700;
+}
+.avg-block-label { display:flex; align-items:center; gap:8px; white-space:nowrap; }
+.avg-block-chip {
+  width:14px; height:14px; border:2px solid #7f8c99; border-radius:4px; background:rgba(255,255,255,.97);
+  box-shadow:0 1px 5px rgba(0,0,0,.12); flex:0 0 auto;
+}
+.avg-block-text {
+  display:inline-block; padding:2px 0; font-size:13px; font-weight:700; line-height:1.2; color:#1f2d3a;
+  text-shadow:0 1px 2px rgba(255,255,255,.95);
+}
+.leaflet-popup-content-wrapper { border-radius:10px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="left">
+    <div id="map"></div>
+    <div class="maplegend">
+      <div style="font-weight:700; margin-bottom:6px;">Map symbols</div>
+      <div class="subtext">Point symbols and color meanings respond to the metric selected in the dashboard.</div>
+      <div class="row"><span class="dot" style="background:#de2d26;"></span><span> Delivery vehicle parked illegally / restricted regulation</span></div>
+      <div class="row"><span class="dot" style="background:#6baed6;"></span><span>Allowed / less restricted location</span></div>
+      <div class="row"><span class="dot" style="background:#bdbdbd;"></span><span>Unknown / business did not know</span></div>
+      <div class="row"><span class="seg-line-swatch"></span><span class="seg-line-swatch outgoing"></span><span><b>Delivery block lines</b> appear for incoming and outgoing delivery metrics and show block-level average delivery intensity.</span></div>
+      <div class="row"><span class="sq" style="background:#fff; border:2px solid #7f8c99;"></span><span><b>Average by block</b> labels show the selected year's average for each block segment and curb side.</span></div>
+      <div id="sizeLegend" class="size-legend">
+        <div id="scaleLegendTitle" style="font-weight:700;">Color scale</div>
+        <div id="sizeLegendSubtitle" style="color:#5a6b75; margin-top:2px;">Colors reflect the selected metric.</div>
+        <div id="sizeLegendContent"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="panel controls">
+      <div class="control">
+        <label>Metric</label>
+        <select id="metricSelect">
+          <option value="incoming">Incoming weekly deliveries</option>
+          <option value="incomingDaily">Average daily incoming deliveries</option>
+          <option value="restricted">Delivery vehicle parked illegally / restricted regulation</option>
+          <option value="double">Double parking score</option>
+          <option value="outgoing">Outgoing daily deliveries</option>
+        </select>
+      </div>
+      <div class="control">
+        <label>Year</label>
+        <select id="yearSelect">
+          <option value="2026">2026</option>
+          <option value="2022">2022</option>
+        </select>
+      </div>
+      <div class="control">
+        <label>Comparison view</label>
+        <select id="compareSelect">
+          <option value="both">Show both sides</option>
+          <option value="north">North only</option>
+          <option value="south">South only</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="panel kpis">
+      <div class="kpi"><div class="label">North Side Businesses</div><div class="value" id="kpiNorth">Ã¢â‚¬â€œ</div><div class="delta" id="kpiNorthDelta">Ã¢â‚¬â€œ</div></div>
+      <div class="kpi"><div class="label">South Side Businesses</div><div class="value" id="kpiSouth">Ã¢â‚¬â€œ</div><div class="delta" id="kpiSouthDelta">Ã¢â‚¬â€œ</div></div>
+      <div class="kpi"><div class="label">North / South Comparison Change</div><div class="value" id="kpiGap">Ã¢â‚¬â€œ</div><div class="delta" id="kpiGapLabel">Ã¢â‚¬â€œ</div></div>
+      <div class="kpi"><div class="label">Businesses in current map</div><div class="value" id="kpiN">Ã¢â‚¬â€œ</div><div class="delta" id="kpiNLabel">records with usable values</div></div>
+    </div>
+
+    <div class="chartgrid">
+      <div class="panel chartpanel"><div id="barChart" style="width:100%; height:100%; min-height:420px;"></div></div>
+      <div class="panel chartpanel"><div id="changeChart" style="width:100%; height:100%; min-height:420px;"></div></div>
+    </div>
+
+    <div class="panel notes">
+      <h3>Key takeaways</h3>
+      <ul id="notesList"></ul>
+    </div>
+  </div>
+</div>
+
+<script>
+const DATA = {"center":[40.688806134597,-73.98343223],"zoom":16,"streets":[{"name":"Court St","lat":40.69140561189034,"lon":-73.990770836356},{"name":"Boerum Pl","lat":40.69138611459346,"lon":-73.990717946547},{"name":"Smith St","lat":40.689864985529276,"lon":-73.986591619384},{"name":"Hoyt St","lat":40.68938915451704,"lon":-73.98530084500001},{"name":"Bond St","lat":40.68863545078131,"lon":-73.983256292522},{"name":"Nevins St","lat":40.68811888056057,"lon":-73.981855005949},{"name":"Flatbush Ave","lat":40.68771812065526,"lon":-73.980767875}],"points":[{"Survey Year":2022,"Business Name":"Taim","Business Address":"11 Hoyt St, Brooklyn, NY, 11201, USA","Longitude":-73.98535981,"Latitude":40.69000533,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":"Don\u0027t know","Incoming Parking Category":"Unknown","Double Parking":"Unsure","Double Parking Score":null},{"Survey Year":2022,"Business Name":"Bed-Stuy Fish Fry","Business Address":"129 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.98866153,"Latitude":40.6909164,"Corridor Side":"North","segment":"Boerum Pl ? Smith St","Total Weekly Deliveries":15,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Bus lane","Incoming Parking Category":"Restricted","Double Parking":"Unsure","Double Parking Score":null},{"Survey Year":2022,"Business Name":"APOLLO DINER","Business Address":"155 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.9875552,"Latitude":40.69048189,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":12,"Incoming Restricted Flag":null,"Incoming Parking Type":"Don\u0027t know","Incoming Parking Category":"Unknown","Double Parking":"Once or twice a day","Double Parking Score":1},{"Survey Year":2022,"Business Name":"DALLAS BBQ","Business Address":"180 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.98706486,"Latitude":40.69001816,"Corridor Side":"South","segment":"Smith St ? Hoyt St","Total Weekly Deliveries":120,"Make Deliveries Daily Total":60,"Incoming Restricted Flag":1,"Incoming Parking Type":"In a No Standing zone","Incoming Parking Category":"Restricted","Double Parking":"Unsure","Double Parking Score":null},{"Survey Year":2022,"Business Name":"Century medical and dental","Business Address":"200 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.98624486,"Latitude":40.68969139,"Corridor Side":"South","segment":"Smith St ? Hoyt St","Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Double parked","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2022,"Business Name":"Armed Forces Career Center","Business Address":"253 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.98378167,"Latitude":40.68902033,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":null,"Incoming Parking Category":null,"Double Parking":null,"Double Parking Score":null},{"Survey Year":2022,"Business Name":"Bridge Cleaners \u0026 Tailors","Business Address":"202 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.986183,"Latitude":40.68966821,"Corridor Side":"South","segment":"Smith St ? Hoyt St","Total Weekly Deliveries":6,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":0,"Incoming Parking Type":"Metered parking","Incoming Parking Category":"Allowed","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2022,"Business Name":"O-Poke","Business Address":"206 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.98608426,"Latitude":40.68954676,"Corridor Side":"South","segment":"Smith St ? Hoyt St","Total Weekly Deliveries":1,"Make Deliveries Daily Total":6,"Incoming Restricted Flag":1,"Incoming Parking Type":"Fire hydrant","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2022,"Business Name":"Bella Pizza","Business Address":"208 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.98594403,"Latitude":40.68958263,"Corridor Side":"South","segment":"Smith St ? Hoyt St","Total Weekly Deliveries":14,"Make Deliveries Daily Total":5,"Incoming Restricted Flag":1,"Incoming Parking Type":"Double parked","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2022,"Business Name":"SMOKE SHOP - Magazine- Newstand Corp.","Business Address":"208 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.98594403,"Latitude":40.68958263,"Corridor Side":"South","segment":"Smith St ? Hoyt St","Total Weekly Deliveries":42,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Bus lane","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2022,"Business Name":"Sun and Sky","Business Address":"222 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.98524188,"Latitude":40.68931487,"Corridor Side":"South","segment":"Hoyt St ? Bond St","Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":null,"Incoming Parking Category":null,"Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2022,"Business Name":"EDIBLE ARRANGEMENTS","Business Address":"224 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.98517097,"Latitude":40.68928738,"Corridor Side":"South","segment":"Hoyt St ? Bond St","Total Weekly Deliveries":8,"Make Deliveries Daily Total":25,"Incoming Restricted Flag":null,"Incoming Parking Type":"Don\u0027t know","Incoming Parking Category":"Unknown","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2022,"Business Name":"Boerum Hill Dental","Business Address":"226 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.98510291,"Latitude":40.68926098,"Corridor Side":"South","segment":"Hoyt St ? Bond St","Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":"Don\u0027t know","Incoming Parking Category":"Unknown","Double Parking":"Never/rarely","Double Parking Score":0},{"Survey Year":2022,"Business Name":"IHOP","Business Address":"253 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.98378167,"Latitude":40.68902033,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":5,"Make Deliveries Daily Total":50,"Incoming Restricted Flag":1,"Incoming Parking Type":"Bus lane","Incoming Parking Category":"Restricted","Double Parking":"Once or twice a day","Double Parking Score":1},{"Survey Year":2022,"Business Name":"1.50 Pizza Shop","Business Address":"255 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98330784,"Latitude":40.68882671,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":2,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Double parked","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2022,"Business Name":"African Jewelry","Business Address":"255 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98330784,"Latitude":40.68882671,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":null,"Incoming Parking Category":null,"Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2022,"Business Name":"GOODWILL","Business Address":"258 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.9840695,"Latitude":40.68884633,"Corridor Side":"South","segment":"Hoyt St ? Bond St","Total Weekly Deliveries":8,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":"Don\u0027t know","Incoming Parking Category":"Unknown","Double Parking":"Unsure","Double Parking Score":null},{"Survey Year":2022,"Business Name":"NEVINS FOODMART","Business Address":"26 Nevins St, Brooklyn, NY, 11217, USA","Longitude":-73.98141068,"Latitude":40.68811019,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Fire hydrant","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2022,"Business Name":"CLASSY BEAUTY SUPPLY","Business Address":"261 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98316744,"Latitude":40.68877894,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":0,"Incoming Parking Type":"On street loading zone","Incoming Parking Category":"Allowed","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2022,"Business Name":"Dunkin","Business Address":"322 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.981897,"Latitude":40.68800738,"Corridor Side":"South","segment":"Bond St ? Nevins St","Total Weekly Deliveries":1,"Make Deliveries Daily Total":20,"Incoming Restricted Flag":1,"Incoming Parking Type":"Double parked","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2022,"Business Name":"Cookies","Business Address":"265 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98294767,"Latitude":40.68868749,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":10,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Double parked","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2022,"Business Name":"Devocion","Business Address":"276 Livingston St, Brooklyn, NY 11201","Longitude":-73.98343223,"Latitude":40.68866867,"Corridor Side":"South","segment":"Bond St ? Nevins St","Total Weekly Deliveries":4,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":0,"Incoming Parking Type":"Metered parking","Incoming Parking Category":"Allowed","Double Parking":"Once or twice a day","Double Parking Score":1},{"Survey Year":2022,"Business Name":"Long \u0026 Short","Business Address":"278 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98337489,"Latitude":40.68864652,"Corridor Side":"South","segment":"Bond St ? Nevins St","Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Double parked","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2022,"Business Name":"Honey Nail Salon","Business Address":"280 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98331755,"Latitude":40.68862437,"Corridor Side":"South","segment":"Bond St ? Nevins St","Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Double parked","Incoming Parking Category":"Restricted","Double Parking":"Once or twice a day","Double Parking Score":1},{"Survey Year":2022,"Business Name":"ATTI FINE KOREAN BBQ","Business Address":"294 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.9829162,"Latitude":40.6884693,"Corridor Side":"South","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":null,"Incoming Parking Category":null,"Double Parking":null,"Double Parking Score":null},{"Survey Year":2022,"Business Name":"KUUN  KOREA TASTE","Business Address":"290 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98303088,"Latitude":40.6885136,"Corridor Side":"South","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":null,"Incoming Parking Category":null,"Double Parking":null,"Double Parking Score":null},{"Survey Year":2022,"Business Name":"Burger Village","Business Address":"286 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98314555,"Latitude":40.68855791,"Corridor Side":"South","segment":"Bond St ? Nevins St","Total Weekly Deliveries":1,"Make Deliveries Daily Total":2,"Incoming Restricted Flag":1,"Incoming Parking Type":"Bus lane","Incoming Parking Category":"Restricted","Double Parking":"Once or twice a day","Double Parking Score":1},{"Survey Year":2022,"Business Name":"PS Family Childcare Network","Business Address":"297 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98179114,"Latitude":40.68823998,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":20,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Bus lane","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2022,"Business Name":"Mattress Firm","Business Address":"268 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.98380397,"Latitude":40.6886742,"Corridor Side":"South","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":null,"Incoming Parking Category":null,"Double Parking":null,"Double Parking Score":null},{"Survey Year":2022,"Business Name":"Max Stylist Salon and Natural Soaps","Business Address":"299 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98172445,"Latitude":40.6881391,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":1,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Double parked","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2022,"Business Name":"LabCorp","Business Address":"230 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.98503808,"Latitude":40.6893038,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":null,"Incoming Parking Category":null,"Double Parking":null,"Double Parking Score":null},{"Survey Year":2022,"Business Name":"Fidoâ€™s Retreat Doggie Daycare","Business Address":"230 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.98503808,"Latitude":40.6893038,"Corridor Side":"South","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Bus lane","Incoming Parking Category":"Restricted","Double Parking":"Unsure","Double Parking Score":null},{"Survey Year":2022,"Business Name":"Nature Deli","Business Address":"228 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.98503854,"Latitude":40.689236,"Corridor Side":"South","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":null,"Incoming Parking Category":null,"Double Parking":null,"Double Parking Score":null},{"Survey Year":2022,"Business Name":"Emmy Nails Inc","Business Address":"303 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98157966,"Latitude":40.68815679,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":null,"Incoming Parking Category":null,"Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2022,"Business Name":"AMINATA  PROFESSIONAL AFRICAN HAIR BRAIDING","Business Address":"305 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98151126,"Latitude":40.68812988,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":null,"Incoming Parking Category":null,"Double Parking":"Unsure","Double Parking Score":null},{"Survey Year":2022,"Business Name":"Brooklyn Martial Arts","Business Address":"314 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98215667,"Latitude":40.68810826,"Corridor Side":"South","segment":"Bond St ? Nevins St","Total Weekly Deliveries":6,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Bus lane","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2022,"Business Name":"Xifu Food","Business Address":"318 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98198275,"Latitude":40.68796727,"Corridor Side":"South","segment":"Bond St ? Nevins St","Total Weekly Deliveries":null,"Make Deliveries Daily Total":25,"Incoming Restricted Flag":1,"Incoming Parking Type":"Double parked","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2022,"Business Name":"Pretty Lady Braiding","Business Address":"204 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.98609734,"Latitude":40.68963586,"Corridor Side":"South","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":null,"Incoming Parking Category":null,"Double Parking":null,"Double Parking Score":null},{"Survey Year":2022,"Business Name":"Porta Bella","Business Address":"320 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98197428,"Latitude":40.68803739,"Corridor Side":"South","segment":"Bond St ? Nevins St","Total Weekly Deliveries":6,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Double parked","Incoming Parking Category":"Restricted","Double Parking":"Once or twice a day","Double Parking Score":1},{"Survey Year":2022,"Business Name":"PATTY PLUS","Business Address":"324 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98183196,"Latitude":40.68798215,"Corridor Side":"South","segment":"Bond St ? Nevins St","Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Bus lane","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2022,"Business Name":"Lucky Grocery Smoke Shop","Business Address":"330 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98166038,"Latitude":40.68791547,"Corridor Side":"South","segment":"Bond St ? Nevins St","Total Weekly Deliveries":1,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Double parked","Incoming Parking Category":"Restricted","Double Parking":"Unsure","Double Parking Score":null},{"Survey Year":2022,"Business Name":"Angelica Pizza","Business Address":"332 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98158427,"Latitude":40.68788593,"Corridor Side":"South","segment":"Bond St ? Nevins St","Total Weekly Deliveries":2,"Make Deliveries Daily Total":1,"Incoming Restricted Flag":1,"Incoming Parking Type":"In a No Standing zone","Incoming Parking Category":"Restricted","Double Parking":"Unsure","Double Parking Score":null},{"Survey Year":2022,"Business Name":"METRO FEAST","Business Address":"340 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98129417,"Latitude":40.68777357,"Corridor Side":"South","segment":"Nevins St ? Flatbush Ave","Total Weekly Deliveries":6,"Make Deliveries Daily Total":10,"Incoming Restricted Flag":1,"Incoming Parking Type":"Bus stop","Incoming Parking Category":"Restricted","Double Parking":"Never/rarely","Double Parking Score":0},{"Survey Year":2022,"Business Name":"Designer Nail Inc","Business Address":"344 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98108982,"Latitude":40.68769557,"Corridor Side":"South","segment":"Nevins St ? Flatbush Ave","Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Bus stop","Incoming Parking Category":"Restricted","Double Parking":"Once or twice a day","Double Parking Score":1},{"Survey Year":2022,"Business Name":"WRIGHT \u0026 GOEBEL WINE \u0026 SPIRITS","Business Address":"346 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98091062,"Latitude":40.68761205,"Corridor Side":"South","segment":"Nevins St ? Flatbush Ave","Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Bus lane","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2022,"Business Name":"Honey Cosmetics","Business Address":"342 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98115352,"Latitude":40.68771988,"Corridor Side":"South","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":null,"Incoming Parking Category":null,"Double Parking":null,"Double Parking Score":null},{"Survey Year":2022,"Business Name":"Diallo Nene Hair Brading INC.","Business Address":"316 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98208869,"Latitude":40.68807733,"Corridor Side":"South","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":null,"Incoming Parking Category":null,"Double Parking":null,"Double Parking Score":null},{"Survey Year":2022,"Business Name":"Uni Wax","Business Address":"358 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98062513,"Latitude":40.68751821,"Corridor Side":"South","segment":"Nevins St ? Flatbush Ave","Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":"Don\u0027t know","Incoming Parking Category":"Unknown","Double Parking":"Never/rarely","Double Parking Score":0},{"Survey Year":2022,"Business Name":"Yay Scrubs","Business Address":"366 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98036403,"Latitude":40.68741855,"Corridor Side":"South","segment":"Nevins St ? Flatbush Ave","Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":"Don\u0027t know","Incoming Parking Category":"Unknown","Double Parking":"Unsure","Double Parking Score":null},{"Survey Year":2022,"Business Name":"SHOE REPAIR","Business Address":"372 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98014778,"Latitude":40.68732564,"Corridor Side":"South","segment":"Nevins St ? Flatbush Ave","Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":null,"Incoming Parking Category":null,"Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2026,"Business Name":"taÃ¯m Mediterranean kitchen","Business Address":"11 Hoyt St, Brooklyn, NY, 11201, USA","Longitude":-73.985359814943,"Latitude":40.690005291575,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":3,"Make Deliveries Daily Total":40,"Incoming Restricted Flag":1,"Incoming Parking Type":"Double parked","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2026,"Business Name":"Nevins Foodmart","Business Address":"26 Nevins St, Brooklyn, NY, 11201, USA","Longitude":-73.9814074000016,"Latitude":40.6881855984942,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":2,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":0,"Incoming Parking Type":"Metered parking","Incoming Parking Category":"Allowed","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2026,"Business Name":"Devotion Coffee Store","Business Address":"33 Bond St, Brooklyn, NY, 11201, USA","Longitude":-73.983587545335,"Latitude":40.688546505146,"Corridor Side":"South","segment":null,"Total Weekly Deliveries":19,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":"Don\u0027t know","Incoming Parking Category":"Unknown","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2026,"Business Name":"Kung Fu Tea","Business Address":"80 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.990963787768,"Latitude":40.691244388321,"Corridor Side":"South","segment":"Court St ? Boerum Pl","Total Weekly Deliveries":1,"Make Deliveries Daily Total":20,"Incoming Restricted Flag":1,"Incoming Parking Type":"Bus stop","Incoming Parking Category":"Restricted","Double Parking":"Unsure","Double Parking Score":null},{"Survey Year":2026,"Business Name":"Poke City","Business Address":"80 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.990963787768,"Latitude":40.691244388321,"Corridor Side":"South","segment":null,"Total Weekly Deliveries":7,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Double parked","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2026,"Business Name":"Halal munchies","Business Address":"82 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.990938725877,"Latitude":40.691316137412,"Corridor Side":"South","segment":"Court St ? Boerum Pl","Total Weekly Deliveries":10,"Make Deliveries Daily Total":20,"Incoming Restricted Flag":1,"Incoming Parking Type":"Bus stop","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2026,"Business Name":"Gym NYC","Business Address":"85 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.990605042312,"Latitude":40.69152325424,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Double parked","Incoming Parking Category":"Restricted","Double Parking":"Once or twice a day","Double Parking Score":1},{"Survey Year":2026,"Business Name":"Trophy World, Inc.","Business Address":"86 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.990770836356,"Latitude":40.691189444946,"Corridor Side":"South","segment":"Court St ? Boerum Pl","Total Weekly Deliveries":10,"Make Deliveries Daily Total":10,"Incoming Restricted Flag":1,"Incoming Parking Type":"Double parked","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2026,"Business Name":"Next Stop Vegan","Business Address":"88 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.990717946547,"Latitude":40.691256416352,"Corridor Side":"South","segment":"Court St ? Boerum Pl","Total Weekly Deliveries":null,"Make Deliveries Daily Total":40,"Incoming Restricted Flag":null,"Incoming Parking Type":"Don\u0027t know","Incoming Parking Category":"Unknown","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2026,"Business Name":"Pizzetta","Business Address":"90 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.99066145252,"Latitude":40.691160820746,"Corridor Side":"South","segment":"Court St ? Boerum Pl","Total Weekly Deliveries":null,"Make Deliveries Daily Total":30,"Incoming Restricted Flag":null,"Incoming Parking Type":"Don\u0027t know","Incoming Parking Category":"Unknown","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2026,"Business Name":"Jersey Mikeâ€™s Subs","Business Address":"117 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.989137182425,"Latitude":40.691004872778,"Corridor Side":"North","segment":"Boerum Pl ? Smith St","Total Weekly Deliveries":6,"Make Deliveries Daily Total":100,"Incoming Restricted Flag":1,"Incoming Parking Type":"No standing zone","Incoming Parking Category":"Restricted","Double Parking":"Never/rarely","Double Parking Score":0},{"Survey Year":2026,"Business Name":"Chick Fil A","Business Address":"161 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.987523100333,"Latitude":40.690534985946,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":3,"Make Deliveries Daily Total":300,"Incoming Restricted Flag":0,"Incoming Parking Type":"Commercial metered parking","Incoming Parking Category":"Allowed","Double Parking":"Never/rarely","Double Parking Score":0},{"Survey Year":2026,"Business Name":"St Francis College","Business Address":"179 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.986592960538,"Latitude":40.690121464753,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":"Don\u0027t know","Incoming Parking Category":"Unknown","Double Parking":"Never/rarely","Double Parking Score":0},{"Survey Year":2026,"Business Name":"Dallas BBQ","Business Address":"180 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.986938378768,"Latitude":40.689738830873,"Corridor Side":"South","segment":"Smith St ? Hoyt St","Total Weekly Deliveries":1,"Make Deliveries Daily Total":40,"Incoming Restricted Flag":1,"Incoming Parking Type":"No parking anytime","Incoming Parking Category":"Restricted","Double Parking":"Once or twice a day","Double Parking Score":1},{"Survey Year":2026,"Business Name":"Kingbridge Cleaners \u0026 Tailors","Business Address":"202 Livingston St","Longitude":-73.986183085472,"Latitude":40.689668171429,"Corridor Side":"South","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":null,"Incoming Parking Category":null,"Double Parking":"Never/rarely","Double Parking Score":0},{"Survey Year":2026,"Business Name":"Poke fan","Business Address":"206 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.986053920344,"Latitude":40.689538503387,"Corridor Side":"South","segment":"Smith St ? Hoyt St","Total Weekly Deliveries":1,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":"Don\u0027t know","Incoming Parking Category":"Unknown","Double Parking":"Unsure","Double Parking Score":null},{"Survey Year":2026,"Business Name":"Solidcore","Business Address":"219 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.985178194321,"Latitude":40.689471053421,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":"Don\u0027t know","Incoming Parking Category":"Unknown","Double Parking":"Once or twice a day","Double Parking Score":1},{"Survey Year":2026,"Business Name":"Edible Arrangements","Business Address":"224 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.985216232941,"Latitude":40.689214249462,"Corridor Side":"South","segment":"Hoyt St ? Bond St","Total Weekly Deliveries":6,"Make Deliveries Daily Total":30,"Incoming Restricted Flag":1,"Incoming Parking Type":"Double parked","Incoming Parking Category":"Restricted","Double Parking":"Never/rarely","Double Parking Score":0},{"Survey Year":2026,"Business Name":"Natural Deli","Business Address":"228 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.985038536594,"Latitude":40.689235958592,"Corridor Side":"South","segment":null,"Total Weekly Deliveries":14,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Double parked","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2026,"Business Name":"Cadet Athletic Performance","Business Address":"229 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.984387681812,"Latitude":40.689261104301,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":0,"Incoming Parking Type":"Metered parking","Incoming Parking Category":"Allowed","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2026,"Business Name":"Oakberry","Business Address":"230 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.983311701543,"Latitude":40.688622478726,"Corridor Side":"South","segment":"Hoyt St ? Bond St","Total Weekly Deliveries":2,"Make Deliveries Daily Total":30,"Incoming Restricted Flag":1,"Incoming Parking Type":"No standing zone","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2026,"Business Name":"iHop","Business Address":"253 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.983781754032,"Latitude":40.689020292223,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":2,"Make Deliveries Daily Total":40,"Incoming Restricted Flag":1,"Incoming Parking Type":"Double parked","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2026,"Business Name":"Yay scrubs ","Business Address":"254 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.98391779232,"Latitude":40.688787359134,"Corridor Side":"South","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Bus lane","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2026,"Business Name":"African Jewelry Store","Business Address":"257 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.983256292522,"Latitude":40.688806134597,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":"Don\u0027t know","Incoming Parking Category":"Unknown","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2026,"Business Name":"Goodwill","Business Address":"258 Livingston St, Brooklyn, NY, 11201, USA","Longitude":-73.984069588587,"Latitude":40.688846283913,"Corridor Side":"South","segment":null,"Total Weekly Deliveries":21,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Double parked","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2026,"Business Name":"A\u0026r discount inc Beauty supply","Business Address":"261 Livingston St","Longitude":-73.9830963954767,"Latitude":40.6888255156948,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":null,"Incoming Parking Category":null,"Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2026,"Business Name":"Kashi Indian Cuisine \u0026 Bar","Business Address":"286 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.9831590576706,"Latitude":40.6884394029666,"Corridor Side":"South","segment":"Bond St ? Nevins St","Total Weekly Deliveries":10,"Make Deliveries Daily Total":30,"Incoming Restricted Flag":null,"Incoming Parking Type":"Don\u0027t know","Incoming Parking Category":"Unknown","Double Parking":"Never/rarely","Double Parking Score":0},{"Survey Year":2026,"Business Name":"The Livingston Hotel","Business Address":"291 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.981855005949,"Latitude":40.688478737459,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":19,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Fire hydrant","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2026,"Business Name":"Brooklyn Martial Arts","Business Address":"293 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.981828016221,"Latitude":40.68841457399,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":4,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Fire hydrant","Incoming Parking Category":"Restricted","Double Parking":"Never/rarely","Double Parking Score":0},{"Survey Year":2026,"Business Name":"Atti","Business Address":"294 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98316903691,"Latitude":40.688261981443,"Corridor Side":"South","segment":"Bond St ? Nevins St","Total Weekly Deliveries":1,"Make Deliveries Daily Total":60,"Incoming Restricted Flag":0,"Incoming Parking Type":"Non metered parking (ASP)","Incoming Parking Category":"Allowed","Double Parking":"Never/rarely","Double Parking Score":0},{"Survey Year":2026,"Business Name":"Afrikart","Business Address":"295 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.981757608234,"Latitude":40.68840074385,"Corridor Side":"North","segment":null,"Total Weekly Deliveries":5,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"No standing zone","Incoming Parking Category":"Restricted","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2026,"Business Name":"Pups Pet Club","Business Address":"302 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.982604012816,"Latitude":40.688216006704,"Corridor Side":"South","segment":null,"Total Weekly Deliveries":null,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":null,"Incoming Parking Type":"Don\u0027t know","Incoming Parking Category":"Unknown","Double Parking":"Never/rarely","Double Parking Score":0},{"Survey Year":2026,"Business Name":"Tend","Business Address":"302 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.982604012816,"Latitude":40.688216006704,"Corridor Side":"South","segment":"Bond St ? Nevins St","Total Weekly Deliveries":3,"Make Deliveries Daily Total":2,"Incoming Restricted Flag":0,"Incoming Parking Type":"Metered parking","Incoming Parking Category":"Allowed","Double Parking":"Consistently","Double Parking Score":2},{"Survey Year":2026,"Business Name":"Portabella","Business Address":"320 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.9820153,"Latitude":40.6880700627578,"Corridor Side":"South","segment":null,"Total Weekly Deliveries":3,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":1,"Incoming Parking Type":"Double parked","Incoming Parking Category":"Restricted","Double Parking":"Never/rarely","Double Parking Score":0},{"Survey Year":2026,"Business Name":"Patty plus","Business Address":"324 Livingston St, Brooklyn, NY, 11217, USA","Longitude":-73.98187311086,"Latitude":40.687910318695,"Corridor Side":"South","segment":null,"Total Weekly Deliveries":1,"Make Deliveries Daily Total":null,"Incoming Restricted Flag":0,"Incoming Parking Type":"Metered parking","Incoming Parking Category":"Allowed","Double Parking":"Consistently","Double Parking Score":2}],"segments":[{"Survey Year":2022,"Corridor Side":"North","segment":"Boerum Pl ? Smith St","incoming_weekly_avg":15,"outgoing_daily_avg":null,"restricted_share":1,"double_parking_avg":null,"businesses":1,"lon":-73.98866153,"lat":40.6909164},{"Survey Year":2022,"Corridor Side":"South","segment":"Bond St ? Nevins St","incoming_weekly_avg":3,"outgoing_daily_avg":12,"restricted_share":0.90909090909090906,"double_parking_avg":1.5555555555555556,"businesses":11,"lon":-73.982396139090909,"lat":40.688218301818175},{"Survey Year":2022,"Corridor Side":"South","segment":"Hoyt St ? Bond St","incoming_weekly_avg":8,"outgoing_daily_avg":25,"restricted_share":null,"double_parking_avg":1.3333333333333333,"businesses":4,"lon":-73.984896315,"lat":40.68917739},{"Survey Year":2022,"Corridor Side":"South","segment":"Nevins St ? Flatbush Ave","incoming_weekly_avg":6,"outgoing_daily_avg":10,"restricted_share":1,"double_parking_avg":1,"businesses":6,"lon":-73.980738591666665,"lat":40.687557265},{"Survey Year":2022,"Corridor Side":"South","segment":"Smith St ? Hoyt St","incoming_weekly_avg":36.6,"outgoing_daily_avg":23.666666666666668,"restricted_share":0.83333333333333337,"double_parking_avg":2,"businesses":6,"lon":-73.986244173333333,"lat":40.689681629999995},{"Survey Year":2026,"Corridor Side":"North","segment":"Boerum Pl ? Smith St","incoming_weekly_avg":6,"outgoing_daily_avg":100,"restricted_share":1,"double_parking_avg":0,"businesses":1,"lon":-73.989137182425,"lat":40.691004872778},{"Survey Year":2026,"Corridor Side":"South","segment":"Bond St ? Nevins St","incoming_weekly_avg":4.666666666666667,"outgoing_daily_avg":30.666666666666668,"restricted_share":0,"double_parking_avg":0.66666666666666663,"businesses":3,"lon":-73.9829773691322,"lat":40.688305797037863},{"Survey Year":2026,"Corridor Side":"South","segment":"Court St ? Boerum Pl","incoming_weekly_avg":7,"outgoing_daily_avg":24,"restricted_share":1,"double_parking_avg":2,"businesses":5,"lon":-73.9908105498136,"lat":40.6912334415554},{"Survey Year":2026,"Corridor Side":"South","segment":"Hoyt St ? Bond St","incoming_weekly_avg":4,"outgoing_daily_avg":30,"restricted_share":1,"double_parking_avg":1,"businesses":2,"lon":-73.984263967242,"lat":40.688918364094},{"Survey Year":2026,"Corridor Side":"South","segment":"Smith St ? Hoyt St","incoming_weekly_avg":1,"outgoing_daily_avg":40,"restricted_share":1,"double_parking_avg":1,"businesses":2,"lon":-73.986496149556,"lat":40.68963866713}],"summary":[{"Survey Year":2022,"Corridor Side":"North","incoming_weekly_avg":8.8333333333333339,"outgoing_daily_avg":31,"restricted_share":0.875,"double_parking_avg":1.8,"businesses":15},{"Survey Year":2022,"Corridor Side":"South","incoming_weekly_avg":15.066666666666666,"outgoing_daily_avg":17.111111111111111,"restricted_share":0.90476190476190477,"double_parking_avg":1.5,"businesses":35},{"Survey Year":2026,"Corridor Side":"North","incoming_weekly_avg":5.5,"outgoing_daily_avg":120,"restricted_share":0.69999999999999996,"double_parking_avg":1.2857142857142858,"businesses":14},{"Survey Year":2026,"Corridor Side":"South","incoming_weekly_avg":6.875,"outgoing_daily_avg":28.363636363636363,"restricted_share":0.7857142857142857,"double_parking_avg":1.3157894736842106,"businesses":21}],"source_csv":"livingston_2022_2026_comparison_ready_incoming_zeros_blank_avgweekday_nozero.csv"};
+
+function normalizeBusinessMetricKey(value) {
+  return (value || '').toString().toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function businessMetricKey(year, name, lat, lon) {
+  const latNum = Number(lat);
+  const lonNum = Number(lon);
+  return [
+    year,
+    normalizeBusinessMetricKey(name),
+    Number.isFinite(latNum) ? latNum.toFixed(6) : '',
+    Number.isFinite(lonNum) ? lonNum.toFixed(6) : ''
+  ].join('|');
+}
+
+const INCOMING_DAILY_LOOKUP = {"2022|bedstuyfishfry|40.690916|-73.988662":3,"2022|dallasbbq|40.690018|-73.987065":20,"2022|bridgecleanerstailors|40.689668|-73.986183":1,"2022|opoke|40.689547|-73.986084":0.2,"2022|bellapizza|40.689583|-73.985944":2,"2022|smokeshopmagazinenewstandcorp|40.689583|-73.985944":8.4,"2022|ediblearrangements|40.689287|-73.985171":1.2,"2022|ihop|40.689020|-73.983782":1,"2022|150pizzashop|40.688827|-73.983308":0.4,"2022|goodwill|40.688846|-73.984070":1.6,"2022|dunkin|40.688007|-73.981897":0.2,"2022|cookies|40.688687|-73.982948":2,"2022|devocion|40.688669|-73.983432":0.8,"2022|burgervillage|40.688558|-73.983146":0.2,"2022|psfamilychildcarenetwork|40.688240|-73.981791":4,"2022|maxstylistsalonandnaturalsoaps|40.688139|-73.981724":0.2,"2022|brooklynmartialarts|40.688108|-73.982157":1,"2022|portabella|40.688037|-73.981974":1,"2022|luckygrocerysmokeshop|40.687915|-73.981660":0.2,"2022|angelicapizza|40.687886|-73.981584":0.4,"2022|metrofeast|40.687774|-73.981294":1.2,"2022|macys|0.000000|0.000000":3.4,"2026|trophyworldinc|40.691189|-73.990771":2,"2026|pokecity|40.691244|-73.990964":1.4,"2026|kungfutea|40.691244|-73.990964":0.2,"2026|halalmunchies|40.691316|-73.990939":1.6,"2026|jerseymikessubs|40.691005|-73.989137":0.8,"2026|chickfila|40.690535|-73.987523":0.6,"2026|pokefan|40.689539|-73.986054":0.2,"2026|dallasbbq|40.689739|-73.986938":0.2,"2026|tammediterraneankitchen|40.690005|-73.985360":0.6,"2026|oakberry|40.688622|-73.983312":0.4,"2026|ediblearrangements|40.689214|-73.985216":1,"2026|naturaldeli|40.689236|-73.985039":2.8,"2026|goodwill|40.688846|-73.984070":3,"2026|ihop|40.689020|-73.983782":0.4,"2026|devotioncoffeestore|40.688547|-73.983588":3.2,"2026|kashiindiancuisinebar|40.688439|-73.983159":2,"2026|tend|40.688216|-73.982604":0.6,"2026|portabella|40.688070|-73.982015":0.6,"2026|atti|40.688262|-73.983169":0.2,"2026|thelivingstonhotel|40.688479|-73.981855":3,"2026|nevinsfoodmart|40.688186|-73.981407":0.4,"2026|afrikart|40.688401|-73.981758":1,"2026|brooklynmartialarts|40.688415|-73.981828":0.8};
+DATA.points.forEach(p => {
+  const key = businessMetricKey(p["Survey Year"], p["Business Name"], p.Latitude, p.Longitude);
+  const val = INCOMING_DAILY_LOOKUP[key];
+  p["Average Daily Incoming Deliveries"] = val == null ? null : Number(val);
+});
+
+DATA.summary.forEach(row => {
+  const matches = DATA.points.filter(p =>
+    p["Survey Year"] == row["Survey Year"] &&
+    p["Corridor Side"] === row["Corridor Side"] &&
+    p["Average Daily Incoming Deliveries"] != null
+  );
+  row.incoming_daily_avg = matches.length
+    ? matches.reduce((sum, p) => sum + Number(p["Average Daily Incoming Deliveries"]), 0) / matches.length
+    : null;
+});
+
+const metricMeta = {
+  incoming: {
+    pointField: "Total Weekly Deliveries",
+    segField: "incoming_weekly_avg",
+    summaryField: "incoming_weekly_avg",
+    labelFmt: v => `Average by block: ${v.toFixed(1)}/wk`,
+    popupLabel: "Incoming weekly deliveries",
+    kpiFmt: v => v == null ? "Ã¢â‚¬â€œ" : v.toFixed(1),
+    deltaFmt: v => (v > 0 ? "+" : "") + v.toFixed(1),
+    axisTitle: "Avg weekly deliveries",
+    noteText: "incoming weekly deliveries",
+    pointColor: v => v >= 12 ? "#253494" : v >= 6 ? "#2c7fb8" : v >= 3 ? "#41b6c4" : "#a1dab4",
+    pointRadius: v => 9
+  },
+  incomingDaily: {
+    pointField: "Average Daily Incoming Deliveries",
+    segField: "incoming_daily_avg",
+    summaryField: "incoming_daily_avg",
+    labelFmt: v => `Average by block: ${v.toFixed(1)}/day`,
+    popupLabel: "Average daily incoming deliveries",
+    kpiFmt: v => v == null ? "-" : v.toFixed(1),
+    deltaFmt: v => (v > 0 ? "+" : "") + v.toFixed(1),
+    axisTitle: "Avg daily incoming deliveries",
+    noteText: "average daily incoming deliveries",
+    pointColor: v => v >= 5 ? "#253494" : v >= 2 ? "#2c7fb8" : v >= 1 ? "#41b6c4" : "#a1dab4",
+    pointRadius: v => 9
+  },
+  restricted: {
+    pointField: "Incoming Parking Category",
+    segField: "restricted_share",
+    summaryField: "restricted_share",
+    labelFmt: v => `Average by block: ${Math.round(v*100)}%`,
+    popupLabel: "Delivery vehicle parked illegally / restricted regulation",
+    kpiFmt: v => v == null ? "Ã¢â‚¬â€œ" : `${Math.round(v*100)}%`,
+    deltaFmt: v => (v > 0 ? "+" : "") + `${Math.round(v*100)} pts`,
+    axisTitle: "Delivery vehicle parked illegally / restricted regulation",
+    noteText: "Delivery vehicle parked illegally / restricted regulation",
+    pointColor: v => v === "Restricted" ? "#de2d26" : v === "Allowed" ? "#6baed6" : "#bdbdbd",
+    pointRadius: v => 9
+  },
+  double: {
+    pointField: "Double Parking Score",
+    segField: "double_parking_avg",
+    summaryField: "double_parking_avg",
+    labelFmt: v => `Average by block: ${v.toFixed(1)}`,
+    popupLabel: "Double parking score",
+    kpiFmt: v => v == null ? "Ã¢â‚¬â€œ" : v.toFixed(2),
+    deltaFmt: v => (v > 0 ? "+" : "") + v.toFixed(2),
+    axisTitle: "Average double parking score",
+    noteText: "double parking score",
+    pointColor: v => v >= 1.5 ? "#7f0000" : v >= 0.5 ? "#fc8d59" : "#91cf60",
+    pointRadius: v => 9
+  },
+  outgoing: {
+    pointField: "Make Deliveries Daily Total",
+    segField: "outgoing_daily_avg",
+    summaryField: "outgoing_daily_avg",
+    labelFmt: v => `Average by block: ${v.toFixed(1)}/day`,
+    popupLabel: "Outgoing deliveries/day",
+    kpiFmt: v => v == null ? "Ã¢â‚¬â€œ" : v.toFixed(1),
+    deltaFmt: v => (v > 0 ? "+" : "") + v.toFixed(1),
+    axisTitle: "Avg outgoing deliveries/day",
+    noteText: "outgoing delivery activity",
+    pointColor: v => v >= 60 ? "#7a0177" : v >= 30 ? "#c51b8a" : v >= 10 ? "#f768a1" : "#fcc5c0",
+    pointRadius: v => 9
+  }
+};
+
+const map = L.map('map', { zoomControl:true }).setView(DATA.center, DATA.zoom);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OpenStreetMap &copy; CARTO'
+}).addTo(map);
+
+const pointLayer = L.layerGroup().addTo(map);
+const polylineLayer = L.layerGroup().addTo(map);
+const labelLayer = L.layerGroup().addTo(map);
+const sortedStreets = DATA.streets
+  .slice()
+  .sort((a, b) => a.lon - b.lon);
+const streetSegmentDefs = sortedStreets
+  .slice(0, -1)
+  .map((street, i) => ({
+    start: street.name,
+    end: sortedStreets[i + 1].name,
+    startLat: street.lat,
+    startLon: street.lon,
+    endLat: sortedStreets[i + 1].lat,
+    endLon: sortedStreets[i + 1].lon,
+    minLon: street.lon,
+    maxLon: sortedStreets[i + 1].lon
+  }));
+// Edit these coordinates to manually redraw block polylines along Livingston Street.
+// Format: "Street A and Street B": [[startLat, startLon], [endLat, endLon]]
+const MANUAL_SEGMENT_LINES = {
+  "Court St and Boerum Pl": [
+    [40.691547860648, -73.991375052410],
+    [40.690990615546, -73.989234546140]
+  ],
+  "Boerum Pl and Smith St": [
+    [40.690990615546, -73.989223633103],
+    [40.690490311228, -73.987856084448]
+  ],
+  "Smith St and Hoyt St": [
+    [40.690482176167, -73.987839988992],
+    [40.689623921695, -73.985731660425]
+  ],
+  "Hoyt St and Bond St": [
+    [40.689615786528, -73.985704834665],
+    [40.688769723804, -73.983580514117]
+  ],
+  "Bond St and Nevins St": [
+    [40.688769723804, -73.983569783814],
+    [40.687948056453, -73.981397089568]
+  ],
+  "Hanover Pl and Nevins St": [
+    [40.688769723804, -73.983569783814],
+    [40.687948056453, -73.981397089568]
+  ],
+  "Nevins St and Flatbush Ave": [
+    [40.687956191823, -73.981407819872],
+    [40.687358239484, -73.979900360430]
+  ]
+};
+
+function sideAllowed(side, compareMode) {
+  if (compareMode === 'both') return true;
+  if (compareMode === 'north') return side === 'North';
+  if (compareMode === 'south') return side === 'South';
+  return true;
+}
+
+function normalizeSegmentName(segment) {
+  if (!segment) return null;
+  return segment
+    .replace(/\s+\?\s+/g, ' and ')
+    .replace(/\s+->\s+/g, ' and ');
+}
+
+function shouldSkipSegmentInference(p) {
+  const name = (p["Business Name"] || '').toString().toLowerCase();
+  const address = (p["Business Address"] || '').toString().toLowerCase();
+  return false;
+}
+
+function adjustedSegmentNameForPoint(p, segmentName) {
+  const name = (p["Business Name"] || '').toString().toLowerCase();
+  const address = (p["Business Address"] || '').toString().toLowerCase();
+  if (name.includes('nevins foodmart') || address.includes('26 nevins st')) {
+    return 'Hanover Pl and Nevins St';
+  }
+  if (!segmentName) return segmentName;
+  if (
+    p["Corridor Side"] === 'North' &&
+    (segmentName === 'Bond St and Nevins St' || segmentName === 'Nevins St and Flatbush Ave')
+  ) {
+    return 'Hanover Pl and Nevins St';
+  }
+  return segmentName;
+}
+
+function inferredSegmentName(p) {
+  if (p.segment) return adjustedSegmentNameForPoint(p, normalizeSegmentName(p.segment));
+  if (shouldSkipSegmentInference(p)) return null;
+  const lon = Number(p.Longitude);
+  if (!Number.isFinite(lon)) return null;
+  const match = streetSegmentDefs.find(seg => lon >= seg.minLon && lon <= seg.maxLon);
+  return match ? adjustedSegmentNameForPoint(p, `${match.start} and ${match.end}`) : null;
+}
+
+function getRenderedSegments(year, compareMode) {
+  const groups = new Map();
+
+  DATA.points
+    .filter(p => p["Survey Year"] == year && sideAllowed(p["Corridor Side"], compareMode))
+    .forEach(p => {
+      const segment = inferredSegmentName(p);
+      if (!segment) return;  
+
+
+
+
+      const key = compareMode === 'both' ? segment : `${p["Corridor Side"]}|${segment}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          "Survey Year": p["Survey Year"],
+          "Corridor Side": compareMode === 'both' ? 'Both' : p["Corridor Side"],
+          segment,
+          lonSum: 0,
+          latSum: 0,
+          pointCount: 0,
+          incomingSum: 0,
+          incomingCount: 0,
+          incomingDailySum: 0,
+          incomingDailyCount: 0,
+          outgoingSum: 0,
+          outgoingCount: 0,
+          restrictedVisible: 0,
+          restrictedRestricted: 0,
+          restrictedKnown: 0,
+          doubleSum: 0,
+          doubleCount: 0,
+          businesses: 0
+        });
+      }
+
+      const row = groups.get(key);
+      row.lonSum += Number(p.Longitude);
+      row.latSum += Number(p.Latitude);
+      row.pointCount += 1;
+      row.businesses += 1;
+
+      if (p["Total Weekly Deliveries"] != null) {
+        row.incomingSum += Number(p["Total Weekly Deliveries"]);
+        row.incomingCount += 1;
+      }
+      if (p["Average Daily Incoming Deliveries"] != null) {
+        row.incomingDailySum += Number(p["Average Daily Incoming Deliveries"]);
+        row.incomingDailyCount += 1;
+      }
+      if (p["Make Deliveries Daily Total"] != null) {
+        row.outgoingSum += Number(p["Make Deliveries Daily Total"]);
+        row.outgoingCount += 1;
+      }
+      if (p["Incoming Parking Category"] != null) {
+        row.restrictedVisible += 1;
+      }
+      if (p["Incoming Parking Category"] === "Restricted") {
+        row.restrictedRestricted += 1;
+        row.restrictedKnown += 1;
+      } else if (p["Incoming Parking Category"] === "Allowed") {
+        row.restrictedKnown += 1;
+      }
+      if (p["Double Parking Score"] != null) {
+        row.doubleSum += Number(p["Double Parking Score"]);
+        row.doubleCount += 1;
+      }
+    });
+
+  return Array.from(groups.values())
+    .map(row => ({
+      "Survey Year": row["Survey Year"],
+      "Corridor Side": row["Corridor Side"],
+      segment: row.segment,
+      incoming_weekly_avg: row.incomingCount ? row.incomingSum / row.incomingCount : null,
+      incoming_daily_avg: row.incomingDailyCount ? row.incomingDailySum / row.incomingDailyCount : null,
+      outgoing_daily_avg: row.outgoingCount ? row.outgoingSum / row.outgoingCount : null,
+      restricted_share: row.restrictedKnown ? row.restrictedRestricted / row.restrictedKnown : null,
+      double_parking_avg: row.doubleCount ? row.doubleSum / row.doubleCount : null,
+      incoming_visible_count: row.incomingCount,
+      incoming_daily_visible_count: row.incomingDailyCount,
+      outgoing_visible_count: row.outgoingCount,
+      restricted_visible_count: row.restrictedVisible,
+      double_visible_count: row.doubleCount,
+      businesses: row.businesses,
+      lon: row.lonSum / row.pointCount,
+      lat: row.latSum / row.pointCount
+    }))
+    .sort((a, b) => a.lon - b.lon || a.lat - b.lat);
+}
+
+function getStreetSegmentDef(segmentName) {
+  if (segmentName === 'Hanover Pl and Nevins St') {
+    return streetSegmentDefs.find(seg => `${seg.start} and ${seg.end}` === 'Bond St and Nevins St') || null;
+  }
+  return streetSegmentDefs.find(seg => `${seg.start} and ${seg.end}` === segmentName) || null;
+}
+
+function getSegmentLineCoords(seg, compareMode) {
+  const def = getStreetSegmentDef(seg.segment);
+  if (!def) return null;
+  const baseCoords = MANUAL_SEGMENT_LINES[seg.segment] || [
+    [def.startLat, def.startLon],
+    [def.endLat, def.endLon]
+  ];
+
+  const startPoint = map.latLngToLayerPoint(baseCoords[0]);
+  const endPoint = map.latLngToLayerPoint(baseCoords[1]);
+  const dx = endPoint.x - startPoint.x;
+  const dy = endPoint.y - startPoint.y;
+  const len = Math.sqrt(dx*dx + dy*dy) || 1;
+  const offsetPx = compareMode === 'both' ? 0 : 7;
+  const sideSign = compareMode === 'both' ? 0 : (seg["Corridor Side"] === 'North' ? 1 : -1);
+  const offsetX = (-dy / len) * offsetPx * sideSign;
+  const offsetY = (dx / len) * offsetPx * sideSign;
+
+  return [
+    map.layerPointToLatLng(L.point(startPoint.x + offsetX, startPoint.y + offsetY)),
+    map.layerPointToLatLng(L.point(endPoint.x + offsetX, endPoint.y + offsetY))
+  ];
+}
+
+function getSegmentLineStyle(metricKey, val) {
+  const color = metricMeta[metricKey].pointColor(val);
+  return { color, weight:7, opacity:0.72, lineCap:'round' };
+}
+
+function drawSegmentLine(seg, metricKey, compareMode, compareSegments) {
+  if (!['incoming', 'incomingDaily', 'outgoing'].includes(metricKey)) return;
+  const m = metricMeta[metricKey];
+  const val = seg[m.segField];
+  if (val == null || !segmentHasVisibleMetric(seg, metricKey)) return;
+
+  const coords = getSegmentLineCoords(seg, compareMode);
+  if (!coords) return;
+
+  const other = compareSegments.find(s => s.segment === seg.segment && s["Corridor Side"] === seg["Corridor Side"]);
+  const delta = other && other[m.segField] != null ? val - other[m.segField] : null;
+  const layer = L.polyline(coords, getSegmentLineStyle(metricKey, val));
+  const units = metricKey === 'incoming' ? '/wk' : '/day';
+  const deltaText = delta == null ? 'n/a' : `${delta > 0 ? '+' : ''}${delta.toFixed(1)}${units}`;
+
+  layer.bindTooltip(
+    `Block: ${seg.segment}<br>Side: ${seg["Corridor Side"]}<br>Selected year average: ${val.toFixed(1)}${units}<br>Change vs ${seg["Survey Year"] == 2026 ? 2022 : 2026}: ${deltaText}`,
+    { sticky:true }
+  );
+  polylineLayer.addLayer(layer);
+}
+
+function metricDescription(metricKey) {
+  if (metricKey === 'double') return "Businesses with a recorded double parking response are shown on the map.";
+  if (metricKey === 'incoming') return "Color shades show lower and higher weekly incoming deliveries.";
+  if (metricKey === 'incomingDaily') return "Color shades show lower and higher average daily incoming deliveries.";
+  if (metricKey === 'outgoing') return "Color shades show lower and higher daily outgoing deliveries.";
+  return "Unknown responses are shown separately and excluded from the Delivery vehicle parked illegally / restricted regulation calculation.";
+}
+
+function formatPopup(p, metricKey) {
+  const m = metricMeta[metricKey];
+  const val = p[m.pointField];
+  const segment = inferredSegmentName(p);
+  const lines = [
+    `<b>${p["Business Name"] || "Business"}</b>`,
+    `Address: ${p["Business Address"] || "n/a"}`,
+    `Year: ${p["Survey Year"]}`,
+    `Side: ${p["Corridor Side"] || "n/a"}`
+  ];
+  if (segment) lines.push(`Segment: ${segment}`);
+  if (val != null) {
+    if (metricKey === 'restricted') {
+      lines.push(`Delivery vehicle parked illegally: ${val}`);
+      if (p["Incoming Parking Type"]) lines.push(`Original response: ${p["Incoming Parking Type"]}`);
+      lines.push(`Unknown responses are excluded from the Delivery vehicle parked illegally / restricted regulation calculation.`);
+    } else if (metricKey === 'double') {
+      lines.push(`Double parking score: ${val}`);
+      if (p["Double Parking"]) lines.push(`Original response: ${p["Double Parking"]}`);
+      lines.push(`Scoring: 0 = Never/rarely, 1 = Once or twice a day, 2 = Consistently`);
+    } else {
+      lines.push(`${m.popupLabel}: ${val}`);
+    }
+  }
+  return lines.join("<br>");
+}
+
+function drawPoint(p, metricKey, alpha) {
+  const m = metricMeta[metricKey];
+  const val = p[m.pointField];
+  if (val == null) return;
+  const color = m.pointColor(val);
+  const layer = L.circleMarker([p.Latitude, p.Longitude], {
+    radius:m.pointRadius(val), color:'#111', weight:1, fillColor:color, fillOpacity:alpha
+  });
+  layer.bindPopup(formatPopup(p, metricKey));
+  pointLayer.addLayer(layer);
+}
+
+function segmentHasVisibleMetric(s, metricKey) {
+  if (metricKey === 'incoming') return (s.incoming_visible_count || 0) > 0;
+  if (metricKey === 'incomingDaily') return (s.incoming_daily_visible_count || 0) > 0;
+  if (metricKey === 'outgoing') return (s.outgoing_visible_count || 0) > 0;
+  if (metricKey === 'restricted') return (s.restricted_visible_count || 0) > 0;
+  if (metricKey === 'double') return (s.double_visible_count || 0) > 0;
+  return false;
+}
+
+function getSegmentLabelLatLng(s, compareMode) {
+  const coords = getSegmentLineCoords(s, compareMode);
+  if (!coords) return [s.lat, s.lon];
+
+  const startPoint = map.latLngToLayerPoint(coords[0]);
+  const endPoint = map.latLngToLayerPoint(coords[1]);
+  const dx = endPoint.x - startPoint.x;
+  const dy = endPoint.y - startPoint.y;
+  const len = Math.sqrt(dx * dx + dy * dy) || 1;
+  const midX = (startPoint.x + endPoint.x) / 2;
+  const midY = (startPoint.y + endPoint.y) / 2;
+
+  const normalX = -dy / len;
+  const normalY = dx / len;
+  const tangentX = dx / len;
+  const tangentY = dy / len;
+
+  const normalSign = compareMode === 'both' ? 1 : (s["Corridor Side"] === "North" ? 1 : -1);
+  const normalOffsetPx = compareMode === 'both' ? 24 : 18;
+  const tangentOffsetPx = compareMode === 'both' ? 0 : (s["Corridor Side"] === "North" ? -16 : 16);
+
+  const labelPoint = L.point(
+    midX + (normalX * normalOffsetPx * normalSign) + (tangentX * tangentOffsetPx),
+    midY + (normalY * normalOffsetPx * normalSign) + (tangentY * tangentOffsetPx)
+  );
+
+  const latLng = map.layerPointToLatLng(labelPoint);
+  return [latLng.lat, latLng.lng];
+}
+
+function addSegLabel(s, metricKey, compareMode) {
+  const m = metricMeta[metricKey];
+  const val = s[m.segField];
+  if (val == null || !segmentHasVisibleMetric(s, metricKey)) return;
+  const html = `<div class="avg-block-label"><span class="avg-block-chip"></span><span class="avg-block-text">${m.labelFmt(val)}</span></div>`;
+  const marker = L.marker(getSegmentLabelLatLng(s, compareMode), {
+    icon: L.divIcon({ className:'', html })
+  });
+  marker.bindTooltip(`Year: ${s["Survey Year"]}<br>Side: ${s["Corridor Side"]}<br>Block: ${s.segment}<br>Businesses: ${s.businesses}`, {sticky:true});
+  labelLayer.addLayer(marker);
+}
+
+function getSummaryVal(year, side, field) {
+  const row = DATA.summary.find(r => r["Survey Year"] == year && r["Corridor Side"] === side);
+  return row ? row[field] : null;
+}
+
+function percentChange(fromVal, toVal) {
+  if (fromVal == null || toVal == null || fromVal === 0) return null;
+  return ((toVal - fromVal) / Math.abs(fromVal)) * 100;
+}
+
+function formatPercentChange(v) {
+  if (v == null) return 'Ã¢â‚¬â€œ';
+  return `${v > 0 ? '+' : ''}${v.toFixed(1)}%`;
+}
+
+function changeVerb(fromVal, toVal) {
+  if (fromVal == null || toVal == null) return 'changed';
+  if (toVal > fromVal) return 'increased';
+  if (toVal < fromVal) return 'decreased';
+  return 'held steady';
+}
+
+// Edit these templates directly. Values inside {braces} are filled in from the live calculations.
+const NOTE_TEMPLATES = {
+  incoming: [
+    'For {metricLabel}, North Side Businesses {northVerb} delivery volume from {north22} in 2022 to {north26} in 2026 ({northPct}), while South Side Businesses {southVerb} from {south22} to {south26} ({southPct}).',
+    'The biggest corridor shift is outgoing deliveries on the north side, which increased from {outNorth22} to {outNorth26} per day ({outNorthPct}).',
+    'Incoming delivery activity fell on both sides. Weekly incoming deliveries changed {inWeekNorthPct} north and {inWeekSouthPct} south, while average daily incoming deliveries changed {inDayNorthPct} north and {inDaySouthPct} south.',
+    'Reported illegal or restricted truck parking eased on both sides, dropping from {restrictedNorth22} to {restrictedNorth26} on the north side and from {restrictedSouth22} to {restrictedSouth26} on the south side.',
+    'Double parking also improved, with the average score changing from {doubleNorth22} to {doubleNorth26} on the north side ({doubleNorthPct}) and from {doubleSouth22} to {doubleSouth26} on the south side ({doubleSouthPct}).'
+  ],
+  incomingDaily: [
+    'For {metricLabel}, North Side Businesses {northVerb} from {north22} in 2022 to {north26} in 2026 ({northPct}), while South Side Businesses {southVerb} from {south22} to {south26} ({southPct}).',
+    'The biggest corridor shift is outgoing deliveries on the north side, which increased from {outNorth22} to {outNorth26} per day ({outNorthPct}).',
+    'Incoming delivery activity fell on both sides. Weekly incoming deliveries changed {inWeekNorthPct} north and {inWeekSouthPct} south, while average daily incoming deliveries changed {inDayNorthPct} north and {inDaySouthPct} south.',
+    'Reported illegal or restricted truck parking eased on both sides, dropping from {restrictedNorth22} to {restrictedNorth26} on the north side and from {restrictedSouth22} to {restrictedSouth26} on the south side.',
+    'Double parking also improved, with the average score changing from {doubleNorth22} to {doubleNorth26} on the north side ({doubleNorthPct}) and from {doubleSouth22} to {doubleSouth26} on the south side ({doubleSouthPct}).'
+  ],
+  restricted: [
+    'Delivery vehicles parking illegally or in restricted locations dropped since 2022, from {north22} to {north26} on North Side Businesses ({northPct}) and from {south22} to {south26} on South Side Businesses ({southPct}).',
+    'The biggest corridor shift is outgoing deliveries on the north side, which increased from {outNorth22} to {outNorth26} per day ({outNorthPct}).',
+    'Incoming delivery activity fell on both sides. Weekly incoming deliveries changed {inWeekNorthPct} north and {inWeekSouthPct} south, while average daily incoming deliveries changed {inDayNorthPct} north and {inDaySouthPct} south.',
+    'Double parking also improved slightly, with the average score changing from {doubleNorth22} to {doubleNorth26} on the north side ({doubleNorthPct}) and from {doubleSouth22} to {doubleSouth26} on the south side ({doubleSouthPct}).',
+    'Unknown parking-location responses are shown separately and excluded from the restricted parking share calculation.'
+  ],
+  double: [
+    'For {metricLabel}, North Side Businesses {northVerb} from {north22} in 2022 to {north26} in 2026 ({northPct}), while South Side Businesses {southVerb} from {south22} to {south26} ({southPct}).',
+    'The biggest corridor shift is outgoing deliveries on the north side, which increased from {outNorth22} to {outNorth26} per day ({outNorthPct}).',
+    'Incoming delivery activity fell on both sides. Weekly incoming deliveries changed {inWeekNorthPct} north and {inWeekSouthPct} south, while average daily incoming deliveries changed {inDayNorthPct} north and {inDaySouthPct} south.',
+    'Reported illegal or restricted truck parking eased on both sides, dropping from {restrictedNorth22} to {restrictedNorth26} on the north side and from {restrictedSouth22} to {restrictedSouth26} on the south side.',
+    'Double parking also improved, with the average score changing from {doubleNorth22} to {doubleNorth26} on the north side ({doubleNorthPct}) and from {doubleSouth22} to {doubleSouth26} on the south side ({doubleSouthPct}).'
+  ],
+  outgoing: [
+    'For {metricLabel}, North Side Businesses {northVerb} from {north22} in 2022 to {north26} in 2026 ({northPct}), while South Side Businesses {southVerb} from {south22} to {south26} ({southPct}).',
+    'The biggest corridor shift is outgoing deliveries on the north side, which increased from {outNorth22} to {outNorth26} per day ({outNorthPct}).',
+    'Incoming delivery activity fell on both sides. Weekly incoming deliveries changed {inWeekNorthPct} north and {inWeekSouthPct} south, while average daily incoming deliveries changed {inDayNorthPct} north and {inDaySouthPct} south.',
+    'Reported illegal or restricted truck parking eased on both sides, dropping from {restrictedNorth22} to {restrictedNorth26} on the north side and from {restrictedSouth22} to {restrictedSouth26} on the south side.',
+    'Double parking also improved, with the average score changing from {doubleNorth22} to {doubleNorth26} on the north side ({doubleNorthPct}) and from {doubleSouth22} to {doubleSouth26} on the south side ({doubleSouthPct}).'
+  ]
+};
+
+function renderNoteTemplate(template, values) {
+  return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, key) => (
+    Object.prototype.hasOwnProperty.call(values, key) ? values[key] : `{${key}}`
+  ));
+}
+
+function buildBar(metricKey) {
+  const m = metricMeta[metricKey];
+  const north22 = getSummaryVal(2022, "North", m.summaryField);
+  const north26 = getSummaryVal(2026, "North", m.summaryField);
+  const south22 = getSummaryVal(2022, "South", m.summaryField);
+  const south26 = getSummaryVal(2026, "South", m.summaryField);
+
+  Plotly.newPlot('barChart', [
+    {x:["North","South"], y:[north22, south22], type:"bar", name:"2022"},
+    {x:["North","South"], y:[north26, south26], type:"bar", name:"2026"}
+  ], {
+    margin:{l:55,r:15,t:40,b:40},
+    title:{text:`North vs south comparison`, x:0, xanchor:'left', font:{size:15}},
+    xaxis:{fixedrange:true},
+    yaxis:{title:m.axisTitle, fixedrange:true},
+    dragmode:false,
+    barmode:'group',
+    paper_bgcolor:'#fff',
+    plot_bgcolor:'#fff',
+    legend:{orientation:'h', y:1.04, x:0}
+  }, {displayModeBar:false, responsive:true, scrollZoom:false, doubleClick:false});
+}
+
+function buildChange(metricKey) {
+  const m = metricMeta[metricKey];
+  const north22 = getSummaryVal(2022, "North", m.summaryField);
+  const north26 = getSummaryVal(2026, "North", m.summaryField);
+  const south22 = getSummaryVal(2022, "South", m.summaryField);
+  const south26 = getSummaryVal(2026, "South", m.summaryField);
+  const northDelta = (north26 != null && north22 != null) ? north26 - north22 : null;
+  const southDelta = (south26 != null && south22 != null) ? south26 - south22 : null;
+
+  Plotly.newPlot('changeChart', [{
+    x:["North","South"],
+    y:[northDelta, southDelta],
+    type:"bar",
+    text:[northDelta, southDelta].map(v => v == null ? "Ã¢â‚¬â€œ" : m.deltaFmt(v)),
+    textposition:"outside"
+  }], {
+    margin:{l:55,r:15,t:40,b:40},
+    title:{text:`2026 minus 2022`, x:0, xanchor:'left', font:{size:15}},
+    xaxis:{fixedrange:true},
+    yaxis:{title:"Change", fixedrange:true},
+    dragmode:false,
+    paper_bgcolor:'#fff',
+    plot_bgcolor:'#fff'
+  }, {displayModeBar:false, responsive:true, scrollZoom:false, doubleClick:false});
+}
+
+function renderSizeLegend(metricKey) {
+  const el = document.getElementById('sizeLegendContent');
+  const sub = document.getElementById('sizeLegendSubtitle');
+  const title = document.getElementById('scaleLegendTitle');
+  const m = metricMeta[metricKey];
+  let items = [];
+  if (metricKey === 'incoming') {
+    title.textContent = 'Incoming weekly color scale';
+    sub.textContent = 'Colors show weekly incoming delivery count ranges for points and block lines.';
+    items = [
+      ['#253494', '12+/week'],
+      ['#2c7fb8', '6-11.9/week'],
+      ['#41b6c4', '3-5.9/week'],
+      ['#a1dab4', 'Under 3/week']
+    ];
+  } else if (metricKey === 'incomingDaily') {
+    title.textContent = 'Incoming daily color scale';
+    sub.textContent = 'Colors show average daily incoming delivery count ranges for points and block lines.';
+    items = [
+      ['#253494', '5+/day'],
+      ['#2c7fb8', '2-4.9/day'],
+      ['#41b6c4', '1-1.9/day'],
+      ['#a1dab4', 'Under 1/day']
+    ];
+  } else if (metricKey === 'outgoing') {
+    title.textContent = 'Outgoing color scale';
+    sub.textContent = 'Colors show daily outgoing delivery count ranges for points and block lines.';
+    items = [
+      ['#7a0177', '60+/day'],
+      ['#c51b8a', '30-59.9/day'],
+      ['#f768a1', '10-29.9/day'],
+      ['#fcc5c0', 'Under 10/day']
+    ];
+  } else if (metricKey === 'double') {
+    title.textContent = 'Double parking color scale';
+    sub.textContent = 'Colors show the double parking score range.';
+    items = [
+      ['#7f0000', '1.5-2.0 (Consistently)'],
+      ['#fc8d59', '0.5-1.49 (Once or twice a day)'],
+      ['#91cf60', '0-0.49 (Never/rarely)']
+    ];
+  } else {
+    title.textContent = 'Delivery vehicle parked illegally / restricted regulation';
+    sub.textContent = 'Colors show the reported parking category.';
+    items = [
+      ['#de2d26', 'Restricted'],
+      ['#6baed6', 'Allowed / less restricted'],
+      ['#bdbdbd', 'Unknown']
+    ];
+  }
+  el.innerHTML = items.map(([color, label]) => `
+    <div class="scale-item">
+      <span class="dot" style="background:${color};"></span>
+      <span>${label}</span>
+    </div>
+  `).join('');
+}
+
+function updateKPIs(metricKey, year, compareMode) {
+  const m = metricMeta[metricKey];
+  const northNow = getSummaryVal(year, "North", m.summaryField);
+  const southNow = getSummaryVal(year, "South", m.summaryField);
+  const north22 = getSummaryVal(2022, "North", m.summaryField);
+  const north26 = getSummaryVal(2026, "North", m.summaryField);
+  const south22 = getSummaryVal(2022, "South", m.summaryField);
+  const south26 = getSummaryVal(2026, "South", m.summaryField);
+  const northDelta = (north26 != null && north22 != null) ? north26 - north22 : null;
+  const southDelta = (south26 != null && south22 != null) ? south26 - south22 : null;
+  const northPctChange = percentChange(north22, north26);
+  const southPctChange = percentChange(south22, south26);
+  const gap = (northNow != null && southNow != null) ? northNow - southNow : null;
+
+  document.getElementById('kpiNorth').textContent = m.kpiFmt(northNow);
+  document.getElementById('kpiSouth').textContent = m.kpiFmt(southNow);
+  document.getElementById('kpiNorthDelta').textContent = `2026 vs 2022: ${formatPercentChange(northPctChange)}`;
+  document.getElementById('kpiSouthDelta').textContent = `2026 vs 2022: ${formatPercentChange(southPctChange)}`;
+
+  const gapLabel = document.getElementById('kpiGapLabel');
+  if (gap == null) {
+    document.getElementById('kpiGap').textContent = 'Ã¢â‚¬â€œ';
+    gapLabel.textContent = 'Selected year: difference between north and south';
+  } else {
+    document.getElementById('kpiGap').textContent = m.deltaFmt(gap);
+    if (gap > 0) {
+      gapLabel.textContent = `Selected year: north is higher than south by ${m.kpiFmt(Math.abs(gap))}`;
+    } else if (gap < 0) {
+      gapLabel.textContent = `Selected year: south is higher than north by ${m.kpiFmt(Math.abs(gap))}`;
+    } else {
+      gapLabel.textContent = 'Selected year: north and south are equal';
+    }
+  }
+
+  const count = DATA.points.filter(p => p["Survey Year"] == year && sideAllowed(p["Corridor Side"], compareMode) && p[m.pointField] != null).length;
+  document.getElementById('kpiN').textContent = count;
+  document.getElementById('kpiNLabel').textContent = metricDescription(metricKey);
+}
+
+function updateNotes(metricKey) {
+  const m = metricMeta[metricKey];
+  const north22 = getSummaryVal(2022, "North", m.summaryField);
+  const north26 = getSummaryVal(2026, "North", m.summaryField);
+  const south22 = getSummaryVal(2022, "South", m.summaryField);
+  const south26 = getSummaryVal(2026, "South", m.summaryField);
+  const northPctChange = percentChange(north22, north26);
+  const southPctChange = percentChange(south22, south26);
+
+  const inWeekNorth22 = getSummaryVal(2022, "North", "incoming_weekly_avg");
+  const inWeekNorth26 = getSummaryVal(2026, "North", "incoming_weekly_avg");
+  const inWeekSouth22 = getSummaryVal(2022, "South", "incoming_weekly_avg");
+  const inWeekSouth26 = getSummaryVal(2026, "South", "incoming_weekly_avg");
+  const inDayNorth22 = getSummaryVal(2022, "North", "incoming_daily_avg");
+  const inDayNorth26 = getSummaryVal(2026, "North", "incoming_daily_avg");
+  const inDaySouth22 = getSummaryVal(2022, "South", "incoming_daily_avg");
+  const inDaySouth26 = getSummaryVal(2026, "South", "incoming_daily_avg");
+  const outNorth22 = getSummaryVal(2022, "North", "outgoing_daily_avg");
+  const outNorth26 = getSummaryVal(2026, "North", "outgoing_daily_avg");
+  const restrictedNorth22 = getSummaryVal(2022, "North", "restricted_share");
+  const restrictedNorth26 = getSummaryVal(2026, "North", "restricted_share");
+  const restrictedSouth22 = getSummaryVal(2022, "South", "restricted_share");
+  const restrictedSouth26 = getSummaryVal(2026, "South", "restricted_share");
+  const doubleNorth22 = getSummaryVal(2022, "North", "double_parking_avg");
+  const doubleNorth26 = getSummaryVal(2026, "North", "double_parking_avg");
+  const doubleSouth22 = getSummaryVal(2022, "South", "double_parking_avg");
+  const doubleSouth26 = getSummaryVal(2026, "South", "double_parking_avg");
+
+  const values = {
+    metricLabel: m.popupLabel.toLowerCase(),
+    northVerb: changeVerb(north22, north26),
+    southVerb: changeVerb(south22, south26),
+    north22: m.kpiFmt(north22),
+    north26: m.kpiFmt(north26),
+    south22: m.kpiFmt(south22),
+    south26: m.kpiFmt(south26),
+    northPct: formatPercentChange(northPctChange),
+    southPct: formatPercentChange(southPctChange),
+    outNorth22: metricMeta.outgoing.kpiFmt(outNorth22),
+    outNorth26: metricMeta.outgoing.kpiFmt(outNorth26),
+    outNorthPct: formatPercentChange(percentChange(outNorth22, outNorth26)),
+    inWeekNorthPct: formatPercentChange(percentChange(inWeekNorth22, inWeekNorth26)),
+    inWeekSouthPct: formatPercentChange(percentChange(inWeekSouth22, inWeekSouth26)),
+    inDayNorthPct: formatPercentChange(percentChange(inDayNorth22, inDayNorth26)),
+    inDaySouthPct: formatPercentChange(percentChange(inDaySouth22, inDaySouth26)),
+    restrictedNorth22: metricMeta.restricted.kpiFmt(restrictedNorth22),
+    restrictedNorth26: metricMeta.restricted.kpiFmt(restrictedNorth26),
+    restrictedSouth22: metricMeta.restricted.kpiFmt(restrictedSouth22),
+    restrictedSouth26: metricMeta.restricted.kpiFmt(restrictedSouth26),
+    doubleNorth22: metricMeta.double.kpiFmt(doubleNorth22),
+    doubleNorth26: metricMeta.double.kpiFmt(doubleNorth26),
+    doubleSouth22: metricMeta.double.kpiFmt(doubleSouth22),
+    doubleSouth26: metricMeta.double.kpiFmt(doubleSouth26),
+    doubleNorthPct: formatPercentChange(percentChange(doubleNorth22, doubleNorth26)),
+    doubleSouthPct: formatPercentChange(percentChange(doubleSouth22, doubleSouth26))
+  };
+
+  const notes = (NOTE_TEMPLATES[metricKey] || NOTE_TEMPLATES.incoming)
+    .map(template => renderNoteTemplate(template, values));
+
+  const ul = document.getElementById('notesList');
+  ul.innerHTML = '';
+  notes.forEach(t => {
+    const li = document.createElement('li');
+    li.textContent = t;
+    ul.appendChild(li);
+  });
+}
+function render() {
+  pointLayer.clearLayers();
+  polylineLayer.clearLayers();
+  labelLayer.clearLayers();
+
+  const metricKey = document.getElementById('metricSelect').value;
+  const year = parseInt(document.getElementById('yearSelect').value, 10);
+  const compareMode = document.getElementById('compareSelect').value;
+  const renderedSegments = getRenderedSegments(year, compareMode);
+  const compareSegments = getRenderedSegments(year === 2026 ? 2022 : 2026, compareMode);
+  DATA.points
+    .filter(p => p["Survey Year"] == year && sideAllowed(p["Corridor Side"], compareMode))
+    .forEach(p => drawPoint(p, metricKey, 0.88));
+
+  renderedSegments.forEach(s => drawSegmentLine(s, metricKey, compareMode, compareSegments));
+  renderedSegments.forEach(s => addSegLabel(s, metricKey, compareMode));
+
+  renderSizeLegend(metricKey);
+  updateKPIs(metricKey, year, compareMode);
+  buildBar(metricKey);
+  buildChange(metricKey);
+  updateNotes(metricKey);
+}
+
+['metricSelect','yearSelect','compareSelect'].forEach(id => {
+  document.getElementById(id).addEventListener('change', render);
+});
+map.on('zoomend', render);
+render();
+</script>
+</body>
+</html>
