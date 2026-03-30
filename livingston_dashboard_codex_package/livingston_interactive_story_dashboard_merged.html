@@ -275,16 +275,36 @@ const MANUAL_SEGMENT_LINES = {
     [40.690482176167, -73.987839988992],
     [40.689623921695, -73.985731660425]
   ],
+  "Smith St and Gallatin Place": [
+    [40.690482176167, -73.987839988992],
+    [40.690121464753, -73.986592960538]
+  ],
+  "Gallatin Place and Hoyt St": [
+    [40.690121464753, -73.986592960538],
+    [40.689623921695, -73.985731660425]
+  ],
   "Hoyt St and Bond St": [
     [40.689615786528, -73.985704834665],
+    [40.688769723804, -73.983580514117]
+  ],
+  "Hoyt St and Elm Place": [
+    [40.689615786528, -73.985704834665],
+    [40.689091364239, -73.984387681812]
+  ],
+  "Elm Place and Bond St": [
+    [40.689091364239, -73.984387681812],
     [40.688769723804, -73.983580514117]
   ],
   "Bond St and Nevins St": [
     [40.688769723804, -73.983569783814],
     [40.687948056453, -73.981397089568]
   ],
-  "Hanover Pl and Nevins St": [
+  "Bond St and Hanover Pl": [
     [40.688769723804, -73.983569783814],
+    [40.688403915651, -73.982604000000]
+  ],
+  "Hanover Pl and Nevins St": [
+    [40.688403915651, -73.982604000000],
     [40.687948056453, -73.981397089568]
   ],
   "Nevins St and Flatbush Ave": [
@@ -292,6 +312,150 @@ const MANUAL_SEGMENT_LINES = {
     [40.687358239484, -73.979900360430]
   ]
 };
+const GALLATIN_SPLIT_LON = -73.986593;
+const ELM_SPLIT_LON = -73.984388;
+const HANOVER_SPLIT_LON = -73.982604;
+const NORTH_SPLIT_REPLACED_SEGMENTS = new Set([
+  'Smith St and Hoyt St',
+  'Hoyt St and Bond St',
+  'Bond St and Nevins St'
+]);
+const NORTH_ONLY_SEGMENTS = new Set([
+  'Smith St and Gallatin Place',
+  'Gallatin Place and Hoyt St',
+  'Hoyt St and Elm Place',
+  'Elm Place and Bond St',
+  'Bond St and Hanover Pl',
+  'Hanover Pl and Nevins St'
+]);
+const MANUAL_SIDE_SEGMENT_LINES = {
+  "North|Boerum Pl and Smith St": [
+    [40.691010953040, -73.989186293531],
+    [40.690522851460, -73.987872000106]
+  ],
+  "North|Bond St and Hanover Pl": [
+    [40.688785994342, -73.983516096335],
+    [40.688464650475, -73.982716807589]
+  ],
+  "North|Bond St and Nevins St": [
+    [40.688781926708, -73.983537548136],
+    [40.687980597927, -73.981402514897]
+  ],
+  "North|Court St and Boerum Pl": [
+    [40.691600737679, -73.991407158926],
+    [40.691071965486, -73.989422345537]
+  ],
+  "North|Elm Place and Bond St": [
+    [40.689253770620, -73.984685371409],
+    [40.688834805933, -73.983607293643]
+  ],
+  "North|Gallatin Place and Hoyt St": [
+    [40.690173043129, -73.987051307994],
+    [40.689672732672, -73.985753059387]
+  ],
+  "North|Hanover Pl and Nevins St": [
+    [40.688456515167, -73.982668525625],
+    [40.687968394876, -73.981386419442]
+  ],
+  "North|Hoyt St and Bond St": [
+    [40.689664597512, -73.985677957535],
+    [40.688814467775, -73.983585833035]
+  ],
+  "North|Hoyt St and Elm Place": [
+    [40.689652394769, -73.985677951664],
+    [40.689249703014, -73.984680172846]
+  ],
+  "North|Nevins St and Flatbush Ave": [
+    [40.687948056453, -73.981343496759],
+    [40.687374510367, -73.979905842267]
+  ],
+  "North|Smith St and Gallatin Place": [
+    [40.690482176167, -73.987813102322],
+    [40.690201515968, -73.987110445019]
+  ],
+  "North|Smith St and Hoyt St": [
+    [40.690469973574, -73.987823732085],
+    [40.690201515968, -73.987104896400]
+  ],
+  "South|Boerum Pl and Smith St": [
+    [40.690962143043, -73.989191646941],
+    [40.690465906043, -73.987936376058]
+  ],
+  "South|Bond St and Nevins St": [
+    [40.688757520897, -73.983601934362],
+    [40.687931785710, -73.981434710212]
+  ],
+  "South|Court St and Boerum Pl": [
+    [40.691523455851, -73.991407161862],
+    [40.691006885542, -73.989438443928]
+  ],
+  "South|Hoyt St and Bond St": [
+    [40.689591381023, -73.985715512130],
+    [40.688761588533, -73.983628758654]
+  ],
+  "South|Nevins St and Flatbush Ave": [
+    [40.687915514963, -73.981386422377],
+    [40.687309426812, -73.979868290607]
+  ],
+  "South|Smith St and Hoyt St": [
+    [40.690433365783, -73.987834455051],
+    [40.689591381023, -73.985731596578]
+  ]
+};
+const NORTH_INFERRED_SEGMENT_RANGES = [
+  { maxLon: -73.989422345537, segment: 'Court St and Boerum Pl' },
+  { maxLon: -73.987872000106, segment: 'Boerum Pl and Smith St' },
+  { maxLon: GALLATIN_SPLIT_LON, segment: 'Smith St and Gallatin Place' },
+  { maxLon: -73.985753059387, segment: 'Gallatin Place and Hoyt St' },
+  { maxLon: ELM_SPLIT_LON, segment: 'Hoyt St and Elm Place' },
+  { maxLon: -73.983628754251, segment: 'Elm Place and Bond St' },
+  { maxLon: HANOVER_SPLIT_LON, segment: 'Bond St and Hanover Pl' },
+  { maxLon: -73.981386419442, segment: 'Hanover Pl and Nevins St' }
+];
+
+function sideSegmentKey(side, segment) {
+  return `${side}|${segment}`;
+}
+
+function getBaseSegmentCoords(segmentName) {
+  const def = getStreetSegmentDef(segmentName);
+  if (!def) return null;
+  return MANUAL_SEGMENT_LINES[segmentName] || [
+    [def.startLat, def.startLon],
+    [def.endLat, def.endLon]
+  ];
+}
+
+function segmentAllowedForSide(segmentName, side) {
+  if (side === 'North') return !NORTH_SPLIT_REPLACED_SEGMENTS.has(segmentName);
+  if (side === 'South') return !NORTH_ONLY_SEGMENTS.has(segmentName);
+  return true;
+}
+
+function offsetSegmentCoords(baseCoords, side, offsetPx) {
+  const startPoint = map.latLngToLayerPoint(baseCoords[0]);
+  const endPoint = map.latLngToLayerPoint(baseCoords[1]);
+  const dx = endPoint.x - startPoint.x;
+  const dy = endPoint.y - startPoint.y;
+  const len = Math.sqrt(dx*dx + dy*dy) || 1;
+  const sideSign = side === 'North' ? 1 : -1;
+  const offsetX = (-dy / len) * offsetPx * sideSign;
+  const offsetY = (dx / len) * offsetPx * sideSign;
+
+  return [
+    map.layerPointToLatLng(L.point(startPoint.x + offsetX, startPoint.y + offsetY)),
+    map.layerPointToLatLng(L.point(endPoint.x + offsetX, endPoint.y + offsetY))
+  ];
+}
+
+function getSideSpecificCoords(segmentName, side) {
+  if (!segmentAllowedForSide(segmentName, side)) return null;
+  const key = sideSegmentKey(side, segmentName);
+  if (MANUAL_SIDE_SEGMENT_LINES[key]) return MANUAL_SIDE_SEGMENT_LINES[key];
+  const baseCoords = getBaseSegmentCoords(segmentName);
+  if (!baseCoords) return null;
+  return offsetSegmentCoords(baseCoords, side, 7);
+}
 
 function sideAllowed(side, compareMode) {
   if (compareMode === 'both') return true;
@@ -313,6 +477,30 @@ function shouldSkipSegmentInference(p) {
   return false;
 }
 
+function getNorthEastSegmentName(p) {
+  const lon = Number(p.Longitude);
+  if (!Number.isFinite(lon)) return 'Hanover Pl and Nevins St';
+  return lon <= HANOVER_SPLIT_LON ? 'Bond St and Hanover Pl' : 'Hanover Pl and Nevins St';
+}
+
+function getNorthHoytBondSegmentName(p) {
+  const lon = Number(p.Longitude);
+  if (!Number.isFinite(lon)) return 'Elm Place and Bond St';
+  return lon <= ELM_SPLIT_LON ? 'Hoyt St and Elm Place' : 'Elm Place and Bond St';
+}
+
+function getNorthSmithHoytSegmentName(p) {
+  const lon = Number(p.Longitude);
+  if (!Number.isFinite(lon)) return 'Gallatin Place and Hoyt St';
+  return lon <= GALLATIN_SPLIT_LON ? 'Smith St and Gallatin Place' : 'Gallatin Place and Hoyt St';
+}
+
+function inferNorthSegmentNameFromLongitude(lon) {
+  if (!Number.isFinite(lon)) return null;
+  const match = NORTH_INFERRED_SEGMENT_RANGES.find(range => lon <= range.maxLon);
+  return match ? match.segment : 'Nevins St and Flatbush Ave';
+}
+
 function adjustedSegmentNameForPoint(p, segmentName) {
   const name = (p["Business Name"] || '').toString().toLowerCase();
   const address = (p["Business Address"] || '').toString().toLowerCase();
@@ -324,7 +512,13 @@ function adjustedSegmentNameForPoint(p, segmentName) {
     p["Corridor Side"] === 'North' &&
     (segmentName === 'Bond St and Nevins St' || segmentName === 'Nevins St and Flatbush Ave')
   ) {
-    return 'Hanover Pl and Nevins St';
+    return getNorthEastSegmentName(p);
+  }
+  if (p["Corridor Side"] === 'North' && segmentName === 'Hoyt St and Bond St') {
+    return getNorthHoytBondSegmentName(p);
+  }
+  if (p["Corridor Side"] === 'North' && segmentName === 'Smith St and Hoyt St') {
+    return getNorthSmithHoytSegmentName(p);
   }
   return segmentName;
 }
@@ -334,8 +528,24 @@ function inferredSegmentName(p) {
   if (shouldSkipSegmentInference(p)) return null;
   const lon = Number(p.Longitude);
   if (!Number.isFinite(lon)) return null;
+  if (p["Corridor Side"] === 'North') {
+    return adjustedSegmentNameForPoint(p, inferNorthSegmentNameFromLongitude(lon));
+  }
   const match = streetSegmentDefs.find(seg => lon >= seg.minLon && lon <= seg.maxLon);
   return match ? adjustedSegmentNameForPoint(p, `${match.start} and ${match.end}`) : null;
+}
+
+function getGlobalSegmentName(segmentName) {
+  if (segmentName === 'Smith St and Gallatin Place' || segmentName === 'Gallatin Place and Hoyt St') {
+    return 'Smith St and Hoyt St';
+  }
+  if (segmentName === 'Hoyt St and Elm Place' || segmentName === 'Elm Place and Bond St') {
+    return 'Hoyt St and Bond St';
+  }
+  if (segmentName === 'Bond St and Hanover Pl' || segmentName === 'Hanover Pl and Nevins St') {
+    return 'Bond St and Nevins St';
+  }
+  return segmentName;
 }
 
 function getRenderedSegments(year, compareMode) {
@@ -344,7 +554,8 @@ function getRenderedSegments(year, compareMode) {
   DATA.points
     .filter(p => p["Survey Year"] == year && sideAllowed(p["Corridor Side"], compareMode))
     .forEach(p => {
-      const segment = inferredSegmentName(p);
+      const rawSegment = inferredSegmentName(p);
+      const segment = compareMode === 'both' ? getGlobalSegmentName(rawSegment) : rawSegment;
       if (!segment) return;  
 
 
@@ -430,34 +641,24 @@ function getRenderedSegments(year, compareMode) {
 }
 
 function getStreetSegmentDef(segmentName) {
-  if (segmentName === 'Hanover Pl and Nevins St') {
+  if (segmentName === 'Smith St and Gallatin Place' || segmentName === 'Gallatin Place and Hoyt St') {
+    return streetSegmentDefs.find(seg => `${seg.start} and ${seg.end}` === 'Smith St and Hoyt St') || null;
+  }
+  if (segmentName === 'Hoyt St and Elm Place' || segmentName === 'Elm Place and Bond St') {
+    return streetSegmentDefs.find(seg => `${seg.start} and ${seg.end}` === 'Hoyt St and Bond St') || null;
+  }
+  if (segmentName === 'Bond St and Hanover Pl' || segmentName === 'Hanover Pl and Nevins St') {
     return streetSegmentDefs.find(seg => `${seg.start} and ${seg.end}` === 'Bond St and Nevins St') || null;
   }
   return streetSegmentDefs.find(seg => `${seg.start} and ${seg.end}` === segmentName) || null;
 }
 
 function getSegmentLineCoords(seg, compareMode) {
-  const def = getStreetSegmentDef(seg.segment);
-  if (!def) return null;
-  const baseCoords = MANUAL_SEGMENT_LINES[seg.segment] || [
-    [def.startLat, def.startLon],
-    [def.endLat, def.endLon]
-  ];
-
-  const startPoint = map.latLngToLayerPoint(baseCoords[0]);
-  const endPoint = map.latLngToLayerPoint(baseCoords[1]);
-  const dx = endPoint.x - startPoint.x;
-  const dy = endPoint.y - startPoint.y;
-  const len = Math.sqrt(dx*dx + dy*dy) || 1;
-  const offsetPx = compareMode === 'both' ? 0 : 7;
-  const sideSign = compareMode === 'both' ? 0 : (seg["Corridor Side"] === 'North' ? 1 : -1);
-  const offsetX = (-dy / len) * offsetPx * sideSign;
-  const offsetY = (dx / len) * offsetPx * sideSign;
-
-  return [
-    map.layerPointToLatLng(L.point(startPoint.x + offsetX, startPoint.y + offsetY)),
-    map.layerPointToLatLng(L.point(endPoint.x + offsetX, endPoint.y + offsetY))
-  ];
+  if (compareMode !== 'both' && !segmentAllowedForSide(seg.segment, seg["Corridor Side"])) return null;
+  const baseCoords = getBaseSegmentCoords(seg.segment);
+  if (!baseCoords) return null;
+  if (compareMode === 'both' || seg["Corridor Side"] === 'Both') return baseCoords;
+  return getSideSpecificCoords(seg.segment, seg["Corridor Side"]);
 }
 
 function getSegmentLineStyle(metricKey, val) {
@@ -866,6 +1067,7 @@ function updateNotes(metricKey) {
     ul.appendChild(li);
   });
 }
+
 function render() {
   pointLayer.clearLayers();
   polylineLayer.clearLayers();
