@@ -1,10 +1,10 @@
 # Livingston dashboard package
 
 Included files
-- livingston_interactive_story_dashboard_merged.html
+- livingston_interactive_story_dashboard.html
 - livingston_2022_2026_comparison_ready_fixed.csv
 
-Open this folder in VS Code or Codex and edit the HTML directly.
+Open this folder in VS Code and edit the HTML directly.
 
 Useful search terms in the HTML
 - metricMeta
